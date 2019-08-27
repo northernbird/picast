@@ -1,3 +1,5 @@
+# PyGObject # should install from debian/ubuntu package.
+# PyGObject-stubs
 pytest
 pytest-cov
 coverage

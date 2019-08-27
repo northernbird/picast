@@ -26,20 +26,20 @@ Run apt install command on Rasbpian / Raspberry Pi Zero W/WH, or Raspberry Pi 3
 
 .. code-block::
 
-    $ sudo apt install net-tools python3 udhcpd omxplayse
+    $ sudo apt install net-tools python3 udhcpd python-gst-1.0 libgtk-3-dev python3-gi gir1.2-gtk-3.0
+    $ sudo apt install gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly
     $ sudo apt install --no-install-recommends lxde
-    $ pip install -r requirements.txt
-    $ cp picast.py /usr/local/bin/picast
-    $ chmod +x /usr/local/bin/picast
+    $ pip install picast
 
 Note: udhcpd is a DHCP server for Ubuntu and Debian.
 
 
-Prepare
--------
+Preparation
+-----------
 
 Increase GPU memory for decoding fullHD video stream.
 add `gpu_mem=128`  to `/boot/config.txt`
+
 
 Usage
 -----
@@ -58,7 +58,7 @@ After Pi connects to the source, it has an IP address of ``192.168.173.1``
 Autostart
 ---------
 
-Edit /home/pi/.config/lxsessions/LXDE/autostart
+Edit /home/pi/.config/lxsessions/LXDE/autostart and add line `@picast`
 
 .. code-block::
 

@@ -25,9 +25,18 @@ import re
 import socket
 import subprocess
 import tempfile
-import tkinter as Tk
+import threading
 from logging import DEBUG, StreamHandler, getLogger
 from time import sleep
+
+import gi
+
+os.putenv('DISPLAY', ':0')  # noqa: E402 # isort:skip
+gi.require_version('Gst', '1.0')  # noqa: E402 # isort:skip
+gi.require_version('Gtk', '3.0')  # noqa: E402 # isort:skip
+gi.require_version('GstVideo', '1.0')  # noqa: E402 # isort:skip
+gi.require_version('GdkX11', '3.0')  # noqa: E402 # isort:skip
+from gi.repository import Gst, Gtk  # noqa: E402 # isort:skip
 
 
 class Settings:
@@ -39,6 +48,7 @@ class Settings:
     myaddress = '192.168.173.1'
     peeraddress = '192.168.173.80'
     netmask = '255.255.255.0'
+    rtp_port = 7236
 
 
 class Dhcpd():
@@ -103,7 +113,7 @@ class Res:
         return self.score < other.score
 
 
-class WfdParameters:
+class WfdVideoParameters:
 
     resolutions_cea = [
         Res(0,   640,  480, 60),  # mandatory res.
@@ -187,15 +197,12 @@ class WfdParameters:
     ]
 
     def get_video_parameter(self):
-        cea = 0x0001FFFF
-        vesa = 0x07FFFFFF
-        hh = 0xFFF
         # audio_codec: LPCM:0x01, AAC:0x02, AC3:0x04
         # audio_sampling_frequency: 44.1khz:1, 48khz:2
         # LPCM: 44.1kHz, 16b; 48 kHZ,16b
         # AAC: 48 kHz, 16b, 2 channels; 48kHz,16b, 4 channels, 48 kHz,16b,6 channels
         # AAC 00000001 00  : 2 ch AAC 48kHz
-        msg = 'wfd_audio_codecs: LPCM 00000002 00\r\n'
+        msg = 'wfd_audio_codecs: AAC 00000001 00, LPCM 00000002 00\r\n'
         # wfd_video_formats: <native_resolution: 0x20>, <preferred>, <profile>, <level>,
         #                    <cea>, <vesa>, <hh>, <latency>, <min_slice>, <slice_enc>, <frame skipping support>
         #                    <max_hres>, <max_vres>
@@ -204,16 +211,22 @@ class WfdParameters:
         # profile: Constrained High Profile: 0x02, Constraint Baseline Profile: 0x01
         # level: H264 level 3.1: 0x01, 3.2: 0x02, 4.0: 0x04,4.1:0x08, 4.2=0x10
         #   3.2: 720p60,  4.1: FullHD@24, 4.2: FullHD@60
-        #
-        msg = msg + 'wfd_video_formats: 10 00 02 10 {0:08X} {1:08X} {2:08X} 00 0000 0000 00 none none\r\n'.format(
-            cea, vesa, hh)
-        msg = msg + 'wfd_3d_video_formats: none\r\n' \
-                  + 'wfd_coupled_sink: none\r\n' \
-                  + 'wfd_display_edid: none\r\n' \
-                  + 'wfd_connector_type: 05\r\n' \
-                  + 'wfd_uibc_capability: none\r\n' \
-                  + 'wfd_standby_resume_capability: none\r\n' \
-                  + 'wfd_content_protection: none\r\n'
+        native = 0x08
+        preferred = 0
+        profile = 0x02 | 0x01
+        level = 0x10
+        cea = 0x0001FFFF
+        vesa = 0x07FFFFFF
+        hh = 0xFFF
+        msg += 'wfd_video_formats: {0:02X} {1:02X} {2:02X} {3:02X} {4:08X} {5:08X} {6:08X}' \
+               ' 00 0000 0000 00 none none\r\n'.format(native, preferred, profile, level, cea, vesa, hh)
+        msg += 'wfd_3d_video_formats: none\r\n' \
+               'wfd_coupled_sink: none\r\n' \
+               'wfd_display_edid: none\r\n' \
+               'wfd_connector_type: 05\r\n' \
+               'wfd_uibc_capability: none\r\n' \
+               'wfd_standby_resume_capability: none\r\n' \
+               'wfd_content_protection: none\r\n'
         return msg
 
 
@@ -310,36 +323,13 @@ class WpaCli:
 
 class PiCast:
 
-    def __init__(self):
+    def __init__(self, window):
         self.logger = getLogger("PiCast")
-        WifiP2PServer().start()
-        self.player = Player()
-
-    def wait_connection(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_address = ('192.168.173.80', Settings.control_port)
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        connectcounter = 0
-        while True:
-            try:
-                sock.connect(server_address)
-            except socket.error as e:
-                connectcounter = connectcounter + 1
-                if connectcounter > 1024:
-                    sock.close()
-                    logger = getLogger("PiCast")
-                    logger.debug("Exit because of caught maximum connection timeouts(1024 x 180sec ).")
-                    return None, None
-            else:
-                break
-        idrsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        idrsock_address = ('127.0.0.1', 0)
-        idrsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        idrsock.bind(idrsock_address)
-        addr, idrsockport = idrsock.getsockname()
-        self.idrsockport = str(idrsockport)
-        return sock, idrsock
+        self.window = window
+        self.port = 1028
+        self.player = GstPlayer(port=self.port)
+        self.watchdog = 0
+        self.csnum = 0
 
     def cast_seq_m1(self, sock):
         logger = getLogger("PiCast.m1")
@@ -361,8 +351,8 @@ class PiCast:
         logger = getLogger("PiCast.m3")
         data = (sock.recv(1000))
         logger.debug("->{}".format(data))
-        msg = 'wfd_client_rtp_ports: RTP/AVP/UDP;unicast 1028 0 mode=play\r\n'
-        msg = msg + WfdParameters().get_video_parameter()
+        msg = "wfd_client_rtp_ports: RTP/AVP/UDP;unicast {} 0 mode=play\r\n".format(self.port)
+        msg = msg + WfdVideoParameters().get_video_parameter()
         m3resp = 'RTSP/1.0 200 OK\r\nCSeq: 2\r\n' + 'Content-Type: text/parameters\r\nContent-Length: ' + str(
             len(msg)) + '\r\n\r\n' + msg
         logger.debug("<-{}".format(m3resp))
@@ -386,9 +376,9 @@ class PiCast:
 
     def cast_seq_m6(self, sock):
         logger = getLogger("PiCast.m6")
-        m6req = 'SETUP rtsp://192.168.173.80/wfd1.0/streamid=0 RTSP/1.0\r\n' \
-                + 'CSeq: 101\r\n' \
-                + 'Transport: RTP/AVP/UDP;unicast;client_port=1028\r\n\r\n'
+        m6req = 'SETUP rtsp://{}/wfd1.0/streamid=0 RTSP/1.0\r\n'.format(Settings.peeraddress)
+        m6req += 'CSeq: 101\r\n' \
+                 + "Transport: RTP/AVP/UDP;unicast;client_port={}\r\n\r\n".format(self.port)
         logger.debug("<-{}".format(m6req))
         sock.sendall(m6req.encode("UTF-8"))
         data = (sock.recv(1000))
@@ -406,68 +396,67 @@ class PiCast:
 
     def cast_seq_m7(self, sock, sessionid):
         logger = getLogger("PiCast.m7")
-        m7req = 'PLAY rtsp://192.168.173.80/wfd1.0/streamid=0 RTSP/1.0\r\n' \
-                + 'CSeq: 102\r\n' \
-                + 'Session: ' + str(sessionid) + '\r\n\r\n'
+        m7req = 'PLAY rtsp://{}/wfd1.0/streamid=0 RTSP/1.0\r\n'.format(Settings.peeraddress)
+        m7req += 'CSeq: 102\r\n' \
+                 + 'Session: {}\r\n\r\n'.format(str(sessionid))
         logger.debug("<-{}".format(m7req))
         sock.sendall(m7req.encode("UTF-8"))
         data = (sock.recv(1000))
         logger.debug("->{}".format(data))
 
-    def run(self):
-        logger = getLogger("PiCast.control")
-        sock, idrsock = self.wait_connection()
-        if sock is None:
-            return
-        self.cast_seq_m1(sock)
-        self.cast_seq_m2(sock)
-        self.cast_seq_m3(sock)
-        self.cast_seq_m4(sock)
-        self.cast_seq_m5(sock)
-        sessionid = self.cast_seq_m6(sock)
-        self.cast_seq_m7(sock, sessionid)
-        logger.debug("---- Negotiation successful ----")
-        fcntl.fcntl(sock, fcntl.F_SETFL, os.O_NONBLOCK)
-        fcntl.fcntl(idrsock, fcntl.F_SETFL, os.O_NONBLOCK)
-        csnum = 102
-        watchdog = 0
-        while True:
+    def handle_recv_err(self, e, sock, idrsock, csnum):
+        logger = getLogger("PiCast.daemon.error")
+        err = e.args[0]
+        if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
             try:
-                data = (sock.recv(1000)).decode("UTF-8")
+                (idrsock.recv(1000))
             except socket.error as e:
                 err = e.args[0]
                 if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
-                    try:
-                        (idrsock.recv(1000))
-                    except socket.error as e:
-                        err = e.args[0]
-                        if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
-                            sleep(0.01)
-                            watchdog = watchdog + 1
-                            if watchdog == 70 / 0.01:
-                                self.player.stop()
-                                sleep(1)
-                                break
-                        else:
-                            logger.debug("socket error.")
-                            return
-                    else:
-                        csnum = csnum + 1
-                        msg = 'wfd-idr-request\r\n'
-                        idrreq = 'SET_PARAMETER rtsp://localhost/wfd1.0 RTSP/1.0\r\n' \
-                                 + 'Content-Length: ' + str(len(msg)) + '\r\n' \
-                                 + 'Content-Type: text/parameters\r\n' \
-                                 + 'CSeq: ' + str(csnum) + '\r\n\r\n' \
-                                 + msg
-                        logger.debug("idreq: {}".format(idrreq))
-                        sock.sendall(idrreq.encode("UTF-8"))
-
+                    sleep(0.01)
+                    self.watchdog += 1
+                    if self.watchdog >= 70 / 0.01:
+                        self.player.stop()
+                        sleep(1)
                 else:
-                    logger.debug("Exit becuase of socket error.")
-                    return
+                    logger.debug("socket error.")
+            else:
+                csnum = csnum + 1
+                msg = 'wfd-idr-request\r\n'
+                idrreq = 'SET_PARAMETER rtsp://localhost/wfd1.0 RTSP/1.0\r\n' \
+                         + 'Content-Length: ' + str(len(msg)) + '\r\n' \
+                         + 'Content-Type: text/parameters\r\n' \
+                         + 'CSeq: ' + str(csnum) + '\r\n\r\n' \
+                         + msg
+                logger.debug("idreq: {}".format(idrreq))
+                sock.sendall(idrreq.encode("UTF-8"))
+        else:
+            logger.debug("Exit becuase of socket error.")
+        return csnum
+
+    def negotiate(self, conn):
+        logger = getLogger("Picast.daemon")
+        logger.debug("---- Start negotiation ----")
+        self.cast_seq_m1(conn)
+        self.cast_seq_m2(conn)
+        self.cast_seq_m3(conn)
+        self.cast_seq_m4(conn)
+        self.cast_seq_m5(conn)
+        sessionid = self.cast_seq_m6(conn)
+        self.cast_seq_m7(conn, sessionid)
+        logger.debug("---- Negotiation successful ----")
+
+    def rtspsrv(self, conn, idrsock):
+        logger = getLogger("PiCast.rtspsrv")
+        csnum = 102
+        while True:
+            try:
+                data = (conn.recv(1000)).decode("UTF-8")
+            except socket.error as e:
+                watchdog, csnum = self.handle_recv_err(e, conn, idrsock, csnum)
             else:
                 logger.debug("data: {}".format(data))
-                watchdog = 0
+                self.watchdog = 0
                 if len(data) == 0 or 'wfd_trigger_method: TEARDOWN' in data:
                     self.player.stop()
                     sleep(1)
@@ -485,10 +474,29 @@ class PiCast:
                             cseq = entry
                             resp = 'RTSP/1.0 200 OK\r' + cseq + '\r\n\r\n'  # cseq contains \n
                             logger.debug("Response: {}".format(resp))
-                            sock.sendall(resp.encode("UTF-8"))
-                            break
-        idrsock.close()
-        sock.close()
+                            conn.sendall(resp.encode("UTF-8"))
+                            continue
+
+    def run(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            server_address = (Settings.peeraddress, Settings.rtp_port)
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(server_address)
+            sock.listen(1)
+            while True:
+                conn, addr = sock.accept()
+                with conn:
+                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as idrsock:
+                        idrsock_address = ('127.0.0.1', 0)
+                        idrsock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                        idrsock.bind(idrsock_address)
+                        addr, idrsockport = idrsock.getsockname()
+                        self.idrsockport = str(idrsockport)
+                        self.negotiate(conn)
+                        fcntl.fcntl(conn, fcntl.F_SETFL, os.O_NONBLOCK)
+                        fcntl.fcntl(idrsock, fcntl.F_SETFL, os.O_NONBLOCK)
+                        self.rtspsrv(conn, idrsock)
 
 
 class WifiP2PServer:
@@ -553,48 +561,52 @@ class WifiP2PServer:
         self.wlandev = p2p_interface
 
 
-class Player():
+class GstPlayer(Gtk.Window):
+    def __init__(self, port, scale=False):
+        self.logger = getLogger("PiCast:GstPlayer")
+        width = 640
+        height = 400
+        gstcommand = "udpsrc port={0:d} caps=\"application/x-rtp, media=video\" ".format(port)
+        gstcommand += "! rtpjitterbuffer latency=100 ! rtpmp2tdepay ! tsdemux name=demuxer demuxer. " \
+                      "! queue max-size-buffers=0 max-size-time=0 ! h264parse ! omxh264dec ! videoconvert ! "
+        if scale:
+            gstcommand += "videoscale method=1 ! video/x-raw,width={0:d},height={1:d} ! ".format(width, height)
+        gstcommand += "autovideosink demuxer. ! queue max-size-buffers=0 max-size-time=0 " \
+                      "! aacparse ! avdec_aac ! audioconvert ! audioresample ! autoaudiosink "
+        self.pipeline = Gst.parse_launch(gstcommand)
+        self.bus = self.pipeline.get_bus()
+        self.bus.add_signal_watch()
+        self.bus.connect('message::eos', self.on_eos)
+        self.bus.connect('message::error', self.on_error)
 
-    def __init__(self):
-        self.player = None
+        self.bus.enable_sync_message_emission()
+        self.bus.connect('sync-message::element', self.on_sync_message)
+        self.bus.connect('message', self.on_message)
 
-    def start(self):
-        logger = getLogger("PiCast:Play")
-        logger.info("Start omxplayer")
-        self.player = subprocess.Popen(["omxplayer", 'rtp://0.0.0.0:1028', '-n 1', '--live', '-hw'])
+    def on_message(self, bus, message):
+        pass
+
+    def run(self):
+        self.pipeline.set_state(Gst.State.PLAYING)
 
     def stop(self):
-        if self.player is not None:
-            self.player.terminate()
+        self.pipeline.set_state(Gst.State.NULL)
 
+    def on_sync_message(self, bus, msg):
+        if msg.get_structure().get_name() == 'prepare-window-handle':
+            if hasattr(self, 'xid'):
+                msg.src.set_window_handle(self.xid)
 
-def Tk_get_root():
-    if not hasattr(Tk_get_root, "root"):
-        Tk_get_root.root = Tk.Tk()
-    return Tk_get_root.root
+    def on_eos(self, bus, msg):
+        self.logger.debug('on_eos(): seeking to start of video')
+        self.pipeline.seek_simple(
+            Gst.Format.TIME,
+            Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT,
+            0
+        )
 
-
-def _quit(self):
-    root = Tk_get_root()
-    root.quit()
-
-
-def show_info():
-    root = Tk_get_root()
-    root.protocol("WM_DELETE_WINDOW", _quit)
-    root.attributes("-fullscreen", True)
-    root.update()
-    w, h = root.winfo_screenwidth(), root.winfo_screenheight()
-    canvas = Tk.Canvas(root, width=w, height=h)
-    canvas.pack()
-    canvas.configure(background='linen')
-    global tkImage
-    tkImage = Tk.PhotoImage(file=os.path.join(os.path.dirname(os.path.abspath(__file__)), "pctablet.pgm"))
-    canvas.create_image(500,  200, image=tkImage)
-    canvas.create_text(80, 200, text="Welcome to 'picast'!")
-    canvas.create_text(80, 300, text="PIN: 12345678")
-    canvas.pack()
-    root.update()
+    def on_error(self, bus, msg):
+        self.logger.debug('on_error():{}'.format(msg.parse_error()))
 
 
 def get_display_resolutions():
@@ -612,13 +624,26 @@ def setup_logger():
     logger.propagate = True
 
 
-if __name__ == '__main__':
-    os.putenv('DISPLAY', ':0')
+def app_main():
     setup_logger()
+    WifiP2PServer().start()
+    window = Gtk.Window()
+    window.set_name('PiCast')
+    window.connect('destroy', Gtk.main_quit)
 
-    picast = PiCast()
-    show_info()
+    def picast_target():
+        picast = PiCast(window)
+        picast.run()
+        Gtk.main_quit()
 
-    root = Tk_get_root()
-    root.after(100, picast.run)
-    root.mainloop()
+    window.show_all()
+
+    thread = threading.Thread(target=picast_target)
+    thread.daemon = True
+    thread.start()
+
+
+if __name__ == '__main__':
+    Gst.init(None)
+    app_main()
+    Gtk.main()

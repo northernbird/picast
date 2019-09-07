@@ -1,9 +1,13 @@
 picast: A Simple Wireless Display Receiver on Raspberry Pi
 ==========================================================
 
+.. image:: https://travis-ci.org/miurahr/picast.svg?branch=master
+    :target: https://travis-ci.org/miurahr/picast
+    :alt: Travis test status
+
 .. image:: https://readthedocs.org/projects/picast/badge/?version=latest
     :target: https://picast.readthedocs.io/en/latest/?badge=latest
-    :alt: Documentation Status
+    :alt: Documentation status
 
 Description
 -----------

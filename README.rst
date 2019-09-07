@@ -9,6 +9,10 @@ picast: A Simple Wireless Display Receiver on Raspberry Pi
     :target: https://picast.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation status
 
+.. image:: https://coveralls.io/repos/github/miurahr/picast/badge.svg?branch=master
+    :target: https://coveralls.io/github/miurahr/picast?branch=master
+
+
 Description
 -----------
 

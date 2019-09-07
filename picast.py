@@ -35,6 +35,7 @@ class Settings:
     wifi_p2p_group_name = 'persistent'
     pin = '12345678'
     timeout = 300
+    control_port = 7236
     myaddress = '192.168.173.1'
     leaseaddress = '192.168.173.80'
     netmask = '255.255.255.0'
@@ -177,7 +178,7 @@ class WfdParameters:
         # level: H264 level 3.1: 0x01, 3.2: 0x02, 4.0: 0x04,4.1:0x08, 4.2=0x10
         #   3.2: 720p60,  4.1: FullHD@24, 4.2: FullHD@60
         #
-        msg = msg + 'wfd_video_formats: 10 00 02 10 {0:08x} {1:08x} {2:08x} 00 0000 0000 00 none none\r\n'.format(
+        msg = msg + 'wfd_video_formats: 10 00 02 10 {0:08X} {1:08X} {2:08X} 00 0000 0000 00 none none\r\n'.format(
             cea, vesa, hh)
         msg = msg + 'wfd_3d_video_formats: none\r\n' \
                   + 'wfd_coupled_sink: none\r\n' \
@@ -295,7 +296,7 @@ class PiCast:
 
     def wait_connection(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_address = ('192.168.173.80', 7236)
+        server_address = ('192.168.173.80', Settings.control_port)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         connectcounter = 0
@@ -485,15 +486,33 @@ class WifiP2PServer:
         dhcpd.start()
         sleep(0.5)
 
+    def wfd_devinfo(self, port):
+        type = 0b01  # PRIMARY_SINK
+        session = 0b01 << 4
+        wsd = 0b01 << 6
+        pc = 0  # P2P
+        cp_support = 0
+        ts = 0
+        devinfo = type | session | wsd | pc | cp_support | ts
+        control = port
+        max_tp = 300  # Mbps
+        return '0006{0:04x}{1:04x}{2:04x}'.format(devinfo, control, max_tp)
+
+    def wfd_bssid(self, bssid):
+        return '0006{0:012x}'.format(bssid)
+
+    def wfd_sink_info(self, status, mac):
+        return '0007{0:02x}{1:012x}'.format(status, mac)
+
     def create_p2p_interface(self):
         wpacli = WpaCli()
         wpacli.start_p2p_find()
         wpacli.set_device_name(Settings.device_name)
         wpacli.set_device_type("7-0050F204-1")
         wpacli.set_p2p_go_ht40()
-        wpacli.wfd_subelem_set("0 00060151022a012c")
-        wpacli.wfd_subelem_set("1 0006000000000000")
-        wpacli.wfd_subelem_set("6 000700000000000000")
+        wpacli.wfd_subelem_set("0 {}".format(self.wfd_devinfo(port=Settings.control_port)))
+        wpacli.wfd_subelem_set("1 {}".format(self.wfd_bssid(0)))
+        wpacli.wfd_subelem_set("6 {}".format(self.wfd_sink_info(0, 0)))
         wpacli.p2p_group_add(Settings.wifi_p2p_group_name)
 
     def set_p2p_interface(self):

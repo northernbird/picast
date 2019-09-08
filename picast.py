@@ -37,20 +37,22 @@ class Settings:
     timeout = 300
     control_port = 7236
     myaddress = '192.168.173.1'
-    leaseaddress = '192.168.173.80'
+    peeraddress = '192.168.173.80'
     netmask = '255.255.255.0'
 
 
 class Dhcpd():
+    """DHCP server daemon running in background."""
 
     def __init__(self, interface):
+        """Constructor accept an interface to listen."""
         self.dhcpd = None
         self.interface = interface
 
     def start(self):
         fd, self.conf_path = tempfile.mkstemp(suffix='.conf')
         conf = "start  {}\nend {}\ninterface {}\noption subnet {}\noption lease {}\n".format(
-            Settings.leaseaddress, Settings.leaseaddress, self.interface, Settings.netmask, Settings.timeout)
+            Settings.peeraddress, Settings.peeraddress, self.interface, Settings.netmask, Settings.timeout)
         with open(self.conf_path, 'w') as c:
             c.write(conf)
         self.dhcpd = subprocess.Popen(["sudo", "udhcpd", self.conf_path])
@@ -61,102 +63,127 @@ class Dhcpd():
             self.conf_path.unlink()
 
 
-class Player():
+class Res:
 
-    def __init__(self):
-        self.player = None
+    def __init__(self, id, width, height, refresh, progressive=True):
+        self.id = id
+        self.width = width
+        self.height = height
+        self.refresh = refresh
+        self.progressive = progressive
 
-    def start(self):
-        logger = getLogger("PiCast:Play")
-        logger.info("Start omxplayer")
-        self.player = subprocess.Popen(["omxplayer", 'rtp://0.0.0.0:1028', '-n 1', '--live', '-hw'])
+    @property
+    def score(self):
+        return self.width * self.height * self.refresh * (1 + 1 if self.progressive else 0)
 
-    def stop(self):
-        if self.player is not None:
-            self.player.terminate()
+    def __repr__(self):
+        return "%s(%d,%d,%d,%d,%s)" % (type(self).__name__, self.id, self.width, self.height, self.refresh,
+                                       'p' if self.progressive else 'i')
+
+    def __str__(self):
+        return 'resolution(%d) %d x %d x %d%s' % (self.id, self.width, self.height, self.refresh,
+                                                  'p' if self.progressive else 'i')
+
+    def __eq__(self, other):
+        return repr(self) == repr(other)
+
+    def __ne__(self, other):
+        return repr(self) != repr(other)
+
+    def __ge__(self, other):
+        return self.score >= other.score
+
+    def __gt__(self, other):
+        return self.score > other.score
+
+    def __le__(self, other):
+        return self.score <= other.score
+
+    def __lt__(self, other):
+        return self.score < other.score
 
 
 class WfdParameters:
 
     resolutions_cea = [
-        (0,   640,  480, 60),  # p60
-        (1,   720,  480, 60),  # p60
-        (2,   720,  480, 60),  # i60
-        (3,   720,  480, 50),  # p50
-        (4,   720,  576, 50),  # i50
-        (5,  1280,  720, 30),  # p30
-        (6,  1280,  720, 60),  # p60
-        (7,  1280, 1080, 30),  # p30
-        (8,  1920, 1080, 60),  # p60
-        (9,  1920, 1080, 60),  # i60
-        (10, 1280,  720, 25),  # p25
-        (11, 1280,  720, 50),  # p50
-        (12, 1920, 1080, 25),  # p25
-        (13, 1920, 1080, 50),  # p50
-        (14, 1920, 1080, 50),  # i50
-        (15, 1280,  720, 24),  # p24
-        (16, 1920, 1080, 24),  # p24
-        (17, 3840, 2160, 30),  # p30
-        (18, 3840, 2160, 60),  # p60
-        (19, 4096, 2160, 30),  # p30
-        (20, 4096, 2160, 60),  # p60
-        (21, 3840, 2160, 25),  # p25
-        (22, 3840, 2160, 50),  # p50
-        (23, 4096, 2160, 25),  # p25
-        (24, 4086, 2160, 50),  # p50
-        (25, 4096, 2160, 24),  # p24
-        (26, 4096, 2160, 24),  # p24
+        Res(0,   640,  480, 60),  # mandatory res.
+        Res(1,   720,  480, 60),  # p60
+        Res(2,   720,  480, 60, False),  # i60
+        Res(3,   720,  480, 50),  # p50
+        Res(4,   720,  576, 50, False),  # i50
+        Res(5,  1280,  720, 30),  # p30
+        Res(6,  1280,  720, 60),  # p60
+        Res(7,  1280, 1080, 30),  # p30
+        Res(8,  1920, 1080, 60),  # p60
+        Res(9,  1920, 1080, 60, False),  # i60
+        Res(10, 1280,  720, 25),  # p25
+        Res(11, 1280,  720, 50),  # p50
+        Res(12, 1920, 1080, 25),  # p25
+        Res(13, 1920, 1080, 50),  # p50
+        Res(14, 1920, 1080, 50, False),  # i50
+        Res(15, 1280,  720, 24),  # p24
+        Res(16, 1920, 1080, 24),  # p24
+        Res(17, 3840, 2160, 30),  # p30
+        Res(18, 3840, 2160, 60),  # p60
+        Res(19, 4096, 2160, 30),  # p30
+        Res(20, 4096, 2160, 60),  # p60
+        Res(21, 3840, 2160, 25),  # p25
+        Res(22, 3840, 2160, 50),  # p50
+        Res(23, 4096, 2160, 25),  # p25
+        Res(24, 4086, 2160, 50),  # p50
+        Res(25, 4096, 2160, 24),  # p24
+        Res(26, 4096, 2160, 24),  # p24
     ]
 
     resolutions_vesa = [
-        (0,   800,  600, 30),  # p30
-        (1,   800,  600, 60),  # p60
-        (2,  1024,  768, 30),  # p30
-        (3,  1024,  768, 60),  # p60
-        (4,  1152,  854, 30),  # p30
-        (5,  1152,  854, 60),  # p60
-        (6,  1280,  768, 30),  # p30
-        (7,  1280,  768, 60),  # p60
-        (8,  1280,  800, 30),  # p30
-        (9,  1280,  800, 60),  # p60
-        (10, 1360,  768, 30),  # p30
-        (11, 1360,  768, 60),  # p60
-        (12, 1366,  768, 30),  # p30
-        (13, 1366,  768, 60),  # p60
-        (14, 1280, 1024, 30),  # p30
-        (15, 1280, 1024, 60),  # p60
-        (16, 1440, 1050, 30),  # p30
-        (17, 1440, 1050, 60),  # p60
-        (18, 1440,  900, 30),  # p30
-        (19, 1440,  900, 60),  # p60
-        (20, 1600,  900, 30),  # p30
-        (21, 1600,  900, 60),  # p60
-        (22, 1600, 1200, 30),  # p30
-        (23, 1600, 1200, 60),  # p60
-        (24, 1680, 1024, 30),  # p30
-        (25, 1680, 1024, 60),  # p60
-        (26, 1680, 1050, 30),  # p30
-        (27, 1680, 1050, 60),  # p60
-        (28, 1920, 1200, 30),  # p30
-        (29, 2560, 1440, 30),  # p30
-        (30, 2560, 1440, 60),  # p60
-        (31, 2560, 1600, 30),  # p30
-        (32, 2560, 1600, 60),  # p60
+        Res(0,   800,  600, 30),  # p30
+        Res(1,   800,  600, 60),  # p60
+        Res(2,  1024,  768, 30),  # p30
+        Res(3,  1024,  768, 60),  # p60
+        Res(4,  1152,  854, 30),  # p30
+        Res(5,  1152,  854, 60),  # p60
+        Res(6,  1280,  768, 30),  # p30
+        Res(7,  1280,  768, 60),  # p60
+        Res(8,  1280,  800, 30),  # p30
+        Res(9,  1280,  800, 60),  # p60
+        Res(10, 1360,  768, 30),  # p30
+        Res(11, 1360,  768, 60),  # p60
+        Res(12, 1366,  768, 30),  # p30
+        Res(13, 1366,  768, 60),  # p60
+        Res(14, 1280, 1024, 30),  # p30
+        Res(15, 1280, 1024, 60),  # p60
+        Res(16, 1440, 1050, 30),  # p30
+        Res(17, 1440, 1050, 60),  # p60
+        Res(18, 1440,  900, 30),  # p30
+        Res(19, 1440,  900, 60),  # p60
+        Res(20, 1600,  900, 30),  # p30
+        Res(21, 1600,  900, 60),  # p60
+        Res(22, 1600, 1200, 30),  # p30
+        Res(23, 1600, 1200, 60),  # p60
+        Res(24, 1680, 1024, 30),  # p30
+        Res(25, 1680, 1024, 60),  # p60
+        Res(26, 1680, 1050, 30),  # p30
+        Res(27, 1680, 1050, 60),  # p60
+        Res(28, 1920, 1200, 30),  # p30
+        Res(29, 2560, 1440, 30),  # p30
+        Res(30, 2560, 1440, 60),  # p60
+        Res(31, 2560, 1600, 30),  # p30
+        Res(32, 2560, 1600, 60),  # p60
     ]
 
     resolutions_hh = [
-        (0, 800, 400, 30),
-        (1, 800, 480, 60),
-        (2, 854, 480, 30),
-        (3, 854, 480, 60),
-        (4, 864, 480, 30),
-        (5, 864, 480, 60),
-        (6, 640, 360, 30),
-        (7, 640, 360, 60),
-        (8, 960, 540, 30),
-        (9, 960, 540, 60),
-        (10, 848, 480, 30),
-        (11, 848, 480, 60),
+        Res(0, 800, 400, 30),
+        Res(1, 800, 480, 60),
+        Res(2, 854, 480, 30),
+        Res(3, 854, 480, 60),
+        Res(4, 864, 480, 30),
+        Res(5, 864, 480, 60),
+        Res(6, 640, 360, 30),
+        Res(7, 640, 360, 60),
+        Res(8, 960, 540, 30),
+        Res(9, 960, 540, 60),
+        Res(10, 848, 480, 30),
+        Res(11, 848, 480, 60),
     ]
 
     def get_video_parameter(self):
@@ -283,16 +310,10 @@ class WpaCli:
 
 class PiCast:
 
-    def __init__(self, log=False, loglevel=DEBUG):
-        logger = getLogger("PiCast")
-        handler = StreamHandler()
-        handler.setLevel(DEBUG)
-        logger.setLevel(loglevel)
-        logger.addHandler(handler)
-        logger.propagate = log
+    def __init__(self):
+        self.logger = getLogger("PiCast")
         WifiP2PServer().start()
         self.player = Player()
-        self.logger = logger
 
     def wait_connection(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -532,6 +553,21 @@ class WifiP2PServer:
         self.wlandev = p2p_interface
 
 
+class Player():
+
+    def __init__(self):
+        self.player = None
+
+    def start(self):
+        logger = getLogger("PiCast:Play")
+        logger.info("Start omxplayer")
+        self.player = subprocess.Popen(["omxplayer", 'rtp://0.0.0.0:1028', '-n 1', '--live', '-hw'])
+
+    def stop(self):
+        if self.player is not None:
+            self.player.terminate()
+
+
 def Tk_get_root():
     if not hasattr(Tk_get_root, "root"):
         Tk_get_root.root = Tk.Tk()
@@ -567,10 +603,20 @@ def get_display_resolutions():
     return resolutions
 
 
+def setup_logger():
+    logger = getLogger("PiCast")
+    handler = StreamHandler()
+    handler.setLevel(DEBUG)
+    logger.setLevel(DEBUG)
+    logger.addHandler(handler)
+    logger.propagate = True
+
+
 if __name__ == '__main__':
     os.putenv('DISPLAY', ':0')
+    setup_logger()
 
-    picast = PiCast(log=True, loglevel=DEBUG)
+    picast = PiCast()
     show_info()
 
     root = Tk_get_root()

@@ -14,8 +14,69 @@ def test_get_video_parameter():
 
 @pytest.mark.unit
 def test_wpacli_start_p2p_find(monkeypatch):
+
     def mockreturn(self, arg):
-        return "OK"
+        if arg == "p2p_find type=progressive":
+            return "OK"
+        else:
+            return "NG"
+
     monkeypatch.setattr(picast.WpaCli, "cmd", mockreturn)
     wpacli = picast.WpaCli()
     wpacli.start_p2p_find()
+
+
+@pytest.mark.unit
+def test_wpacli_stop_p2p_find(monkeypatch):
+
+    def mockreturn(self, arg):
+        if arg == "p2p_stop_find":
+            return "OK"
+        else:
+            return "NG"
+
+    monkeypatch.setattr(picast.WpaCli, "cmd", mockreturn)
+    wpacli = picast.WpaCli()
+    wpacli.stop_p2p_find()
+
+
+@pytest.mark.unit
+def test_wpacli_set_device_name(monkeypatch):
+
+    def mockreturn(self, arg):
+        if arg == "set device_name foo":
+            return "OK"
+        else:
+            return "NG"
+
+    monkeypatch.setattr(picast.WpaCli, "cmd", mockreturn)
+    wpacli = picast.WpaCli()
+    wpacli.set_device_name("foo")
+
+
+@pytest.mark.unit
+def test_wpacli_set_device_type(monkeypatch):
+
+    def mockreturn(self, arg):
+        if arg == "set device_type foo":
+            return "OK"
+        else:
+            return "NG"
+
+    monkeypatch.setattr(picast.WpaCli, "cmd", mockreturn)
+    wpacli = picast.WpaCli()
+    wpacli.set_device_type("foo")
+
+
+@pytest.mark.unit
+def test_wpacli_set_p2p_go_ht40(monkeypatch):
+
+    def mockreturn(self, arg):
+        if arg == "set p2p_go_ht40 1":
+            return "OK"
+        else:
+            return "NG"
+
+    monkeypatch.setattr(picast.WpaCli, "cmd", mockreturn)
+    wpacli = picast.WpaCli()
+    wpacli.set_p2p_go_ht40()

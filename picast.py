@@ -40,15 +40,16 @@ from gi.repository import Gst, Gtk  # noqa: E402 # isort:skip
 
 
 class Settings:
-    device_name = 'picast'
-    wifi_p2p_group_name = 'persistent'
+    wp_device_name = 'picast'
+    wp_device_type = "7-0050F204-1"
+    wp_group_name = 'persistent'
     pin = '12345678'
     timeout = 300
-    control_port = 7236
+    rtsp_port = 7236
+    rtp_port = 1028
     myaddress = '192.168.173.1'
     peeraddress = '192.168.173.80'
     netmask = '255.255.255.0'
-    rtp_port = 7236
 
 
 class Dhcpd():
@@ -75,12 +76,14 @@ class Dhcpd():
 
 class Res:
 
-    def __init__(self, id, width, height, refresh, progressive=True):
+    def __init__(self, id, width, height, refresh, progressive=True, h264level='3.1', h265level='3.1'):
         self.id = id
         self.width = width
         self.height = height
         self.refresh = refresh
         self.progressive = progressive
+        self.h264level = h264level
+        self.h265level = h265level
 
     @property
     def score(self):
@@ -116,69 +119,65 @@ class Res:
 class WfdVideoParameters:
 
     resolutions_cea = [
-        Res(0,   640,  480, 60),  # mandatory res.
-        Res(1,   720,  480, 60),  # p60
-        Res(2,   720,  480, 60, False),  # i60
-        Res(3,   720,  480, 50),  # p50
-        Res(4,   720,  576, 50, False),  # i50
-        Res(5,  1280,  720, 30),  # p30
-        Res(6,  1280,  720, 60),  # p60
-        Res(7,  1280, 1080, 30),  # p30
-        Res(8,  1920, 1080, 60),  # p60
-        Res(9,  1920, 1080, 60, False),  # i60
-        Res(10, 1280,  720, 25),  # p25
-        Res(11, 1280,  720, 50),  # p50
-        Res(12, 1920, 1080, 25),  # p25
-        Res(13, 1920, 1080, 50),  # p50
-        Res(14, 1920, 1080, 50, False),  # i50
-        Res(15, 1280,  720, 24),  # p24
-        Res(16, 1920, 1080, 24),  # p24
-        Res(17, 3840, 2160, 30),  # p30
-        Res(18, 3840, 2160, 60),  # p60
-        Res(19, 4096, 2160, 30),  # p30
-        Res(20, 4096, 2160, 60),  # p60
-        Res(21, 3840, 2160, 25),  # p25
-        Res(22, 3840, 2160, 50),  # p50
-        Res(23, 4096, 2160, 25),  # p25
-        Res(24, 4086, 2160, 50),  # p50
-        Res(25, 4096, 2160, 24),  # p24
-        Res(26, 4096, 2160, 24),  # p24
+        Res(0,   640,  480, 60, True),
+        Res(1,   720,  480, 60, True),
+        Res(2,   720,  480, 60, False),
+        Res(3,   720,  480, 50, True),
+        Res(4,   720,  576, 50, False),
+        Res(5,  1280,  720, 30, True),
+        Res(6,  1280,  720, 60, True, '3.2', '4'),
+        Res(7,  1280, 1080, 30, True, '4', '4'),
+        Res(8,  1920, 1080, 60, True, '4.2', '4.1'),
+        Res(9,  1920, 1080, 60, False, '4', '4'),
+        Res(10, 1280,  720, 25, True),
+        Res(11, 1280,  720, 50, True, '3.2', '4'),
+        Res(12, 1920, 1080, 25, True, '3.2', '4'),
+        Res(13, 1920, 1080, 50, True, '4.2', '4.1'),
+        Res(14, 1920, 1080, 50, False, '3.2', '4'),
+        Res(15, 1280,  720, 24, True),
+        Res(16, 1920, 1080, 24, True, '3.2', '4'),
+        Res(17, 3840, 2160, 30, True, '5.1', '5'),
+        Res(18, 3840, 2160, 60, True, '5.1', '5'),
+        Res(19, 4096, 2160, 30, True, '5.1', '5'),
+        Res(20, 4096, 2160, 60, True, '5.2', '5.1'),
+        Res(21, 3840, 2160, 25, True, '5.2', '5.1'),
+        Res(22, 3840, 2160, 50, True, '5.2', '5'),
+        Res(23, 4096, 2160, 25, True, '5.2', '5'),
+        Res(24, 4086, 2160, 50, True, '5.2', '5'),
+        Res(25, 4096, 2160, 24, True, '5.2', '5.1'),
+        Res(26, 4096, 2160, 24, True, '5.2', '5.1'),
     ]
 
     resolutions_vesa = [
-        Res(0,   800,  600, 30),  # p30
-        Res(1,   800,  600, 60),  # p60
-        Res(2,  1024,  768, 30),  # p30
-        Res(3,  1024,  768, 60),  # p60
-        Res(4,  1152,  854, 30),  # p30
-        Res(5,  1152,  854, 60),  # p60
-        Res(6,  1280,  768, 30),  # p30
-        Res(7,  1280,  768, 60),  # p60
-        Res(8,  1280,  800, 30),  # p30
-        Res(9,  1280,  800, 60),  # p60
-        Res(10, 1360,  768, 30),  # p30
-        Res(11, 1360,  768, 60),  # p60
-        Res(12, 1366,  768, 30),  # p30
-        Res(13, 1366,  768, 60),  # p60
-        Res(14, 1280, 1024, 30),  # p30
-        Res(15, 1280, 1024, 60),  # p60
-        Res(16, 1440, 1050, 30),  # p30
-        Res(17, 1440, 1050, 60),  # p60
-        Res(18, 1440,  900, 30),  # p30
-        Res(19, 1440,  900, 60),  # p60
-        Res(20, 1600,  900, 30),  # p30
-        Res(21, 1600,  900, 60),  # p60
-        Res(22, 1600, 1200, 30),  # p30
-        Res(23, 1600, 1200, 60),  # p60
-        Res(24, 1680, 1024, 30),  # p30
-        Res(25, 1680, 1024, 60),  # p60
-        Res(26, 1680, 1050, 30),  # p30
-        Res(27, 1680, 1050, 60),  # p60
-        Res(28, 1920, 1200, 30),  # p30
-        Res(29, 2560, 1440, 30),  # p30
-        Res(30, 2560, 1440, 60),  # p60
-        Res(31, 2560, 1600, 30),  # p30
-        Res(32, 2560, 1600, 60),  # p60
+        Res(0,   800,  600, 30, True, '3.1', '3.1'),
+        Res(1,   800,  600, 60, True, '3.2', '4'),
+        Res(2,  1024,  768, 30, True, '3.1', '3.1'),
+        Res(3,  1024,  768, 60, True, '3.2', '4'),
+        Res(4,  1152,  854, 30, True, '3.2', '4'),
+        Res(5,  1152,  854, 60, True, '4', '4.1'),
+        Res(6,  1280,  768, 30, True, '3.2', '4'),
+        Res(7,  1280,  768, 60, True, '4', '4.1'),
+        Res(8,  1280,  800, 30, True, '3.2', '4'),
+        Res(9,  1280,  800, 60, True, '4', '4.1'),
+        Res(10, 1360,  768, 30, True, '3.2', '4'),
+        Res(11, 1360,  768, 60, True, '4', '4.1'),
+        Res(12, 1366,  768, 30, True, '3.2', '4'),
+        Res(13, 1366,  768, 60, True, '4.2', '4.1'),
+        Res(14, 1280, 1024, 30, True, '3.2', '4'),
+        Res(15, 1280, 1024, 60, True, '4.2', '4.1'),
+        Res(16, 1440, 1050, 30, True, '3.2', '4'),
+        Res(17, 1440, 1050, 60, True, '4.2', '4.1'),
+        Res(18, 1440,  900, 30, True, '3.2', '4'),
+        Res(19, 1440,  900, 60, True, '4.2', '4.1'),
+        Res(20, 1600,  900, 30, True, '3.2', '4'),
+        Res(21, 1600,  900, 60, True, '4.2', '4.1'),
+        Res(22, 1600, 1200, 30, True, '4', '5'),
+        Res(23, 1600, 1200, 60, True, '4.2', '5.1'),
+        Res(24, 1680, 1024, 30, True, '3.2', '4'),
+        Res(25, 1680, 1024, 60, True, '4.2', '4.1'),
+        Res(26, 1680, 1050, 30, True, '3.2', '4'),
+        Res(27, 1680, 1050, 60, True, '4.2', '4.1'),
+        Res(28, 1920, 1200, 30, True, '4.2', '5'),
     ]
 
     resolutions_hh = [
@@ -216,10 +215,10 @@ class WfdVideoParameters:
         profile = 0x02 | 0x01
         level = 0x10
         cea = 0x0001FFFF
-        vesa = 0x07FFFFFF
-        hh = 0xFFF
+        vesa = 0x0FFFFFFF
+        handheld = 0x0
         msg += 'wfd_video_formats: {0:02X} {1:02X} {2:02X} {3:02X} {4:08X} {5:08X} {6:08X}' \
-               ' 00 0000 0000 00 none none\r\n'.format(native, preferred, profile, level, cea, vesa, hh)
+               ' 00 0000 0000 00 none none\r\n'.format(native, preferred, profile, level, cea, vesa, handheld)
         msg += 'wfd_3d_video_formats: none\r\n' \
                'wfd_coupled_sink: none\r\n' \
                'wfd_display_edid: none\r\n' \
@@ -326,22 +325,36 @@ class PiCast:
     def __init__(self, window):
         self.logger = getLogger("PiCast")
         self.window = window
-        self.port = 1028
-        self.player = GstPlayer(port=self.port)
+        self.player = GstPlayer()
         self.watchdog = 0
         self.csnum = 0
 
+    def rtsp_response_header(self, cmd=None, url=None, res=None, seq=None, others=None):
+        if cmd is not None:
+            msg = "{0:s} {1:s} RTSP/1.0".format(cmd, url)
+        else:
+            msg = "RTSP/1.0"
+        if res is not None:
+            msg += ' {0:s}\r\nCSeq: {1:d}\r\n'.format(res, seq)
+        else:
+            msg += '\r\nCSeq: {0:d}\r\n'.format(seq)
+        if others is not None:
+            for k,v in others:
+                msg += '{}: {}\r\n'.format(k,v)
+        msg += '\r\n'
+        return msg
+
     def cast_seq_m1(self, sock):
         logger = getLogger("PiCast.m1")
-        data = (sock.recv(1000))
+        data = (sock.recv(1000))  # RTSP OPTIONS message
         logger.debug("<-{}".format(data))
-        s_data = 'RTSP/1.0 200 OK\r\nCSeq: 1\r\nPublic: org.wfa.wfd1.0, SET_PARAMETER, GET_PARAMETER\r\n\r\n'
+        s_data = self.rtsp_response_header(seq=1, others=[("Public", "org.wfs.wfd1.0, SET_PARAMETER, GET_PARAMETER")])
         logger.debug("->{}".format(s_data))
         sock.sendall(s_data.encode("UTF-8"))
 
     def cast_seq_m2(self, sock):
         logger = getLogger("PiCast.m2")
-        s_data = 'OPTIONS * RTSP/1.0\r\nCSeq: 100\r\nRequire: org.wfa.wfd1.0\r\n\r\n'
+        s_data = self.rtsp_response_header(seq=100, others=[('Require', 'org.wfs.wfd1.0')])
         logger.debug("<-{}".format(s_data))
         sock.sendall(s_data.encode("UTF-8"))
         data = (sock.recv(1000))
@@ -351,10 +364,13 @@ class PiCast:
         logger = getLogger("PiCast.m3")
         data = (sock.recv(1000))
         logger.debug("->{}".format(data))
-        msg = "wfd_client_rtp_ports: RTP/AVP/UDP;unicast {} 0 mode=play\r\n".format(self.port)
-        msg = msg + WfdVideoParameters().get_video_parameter()
-        m3resp = 'RTSP/1.0 200 OK\r\nCSeq: 2\r\n' + 'Content-Type: text/parameters\r\nContent-Length: ' + str(
-            len(msg)) + '\r\n\r\n' + msg
+        msg = "wfd_client_rtp_ports: RTP/AVP/UDP;unicast {} 0 mode=play\r\n".format(Settings.rtp_port)\
+              + WfdVideoParameters().get_video_parameter()
+        m3resp = self.rtsp_response_header(seq=2,
+                                           others=[('Content-Type','text/parameters'),
+                                                   ('Content-Length', len(msg))
+                                                   ])
+        m3resp += msg
         logger.debug("<-{}".format(m3resp))
         sock.sendall(m3resp.encode("UTF-8"))
 
@@ -362,23 +378,27 @@ class PiCast:
         logger = getLogger("PiCast.m4")
         data = (sock.recv(1000)).decode("UTF-8")
         logger.debug("->{}".format(data))
-        s_data = 'RTSP/1.0 200 OK\r\nCSeq: 3\r\n\r\n'
+        s_data = self.rtsp_response_header(res="200 OK", seq=3)
         logger.debug("<-{}".format(s_data))
         sock.sendall(s_data.encode("UTF-8"))
 
     def cast_seq_m5(self, sock):
         logger = getLogger("PiCast.m5")
         data = (sock.recv(1000))
-        logger.debug("->{}".format(data))
-        s_data = 'RTSP/1.0 200 OK\r\nCSeq: 4\r\n\r\n'
+        logger.debug("->{}".format(data))  # wfd-triggered-method
+        s_data = self.rtsp_response_header(res="200 OK", seq=4)
         logger.debug("<-{}".format(s_data))
         sock.sendall(s_data.encode("UTF-8"))
 
     def cast_seq_m6(self, sock):
         logger = getLogger("PiCast.m6")
-        m6req = 'SETUP rtsp://{}/wfd1.0/streamid=0 RTSP/1.0\r\n'.format(Settings.peeraddress)
-        m6req += 'CSeq: 101\r\n' \
-                 + "Transport: RTP/AVP/UDP;unicast;client_port={}\r\n\r\n".format(self.port)
+        m6req = self.rtsp_response_header(cmd="SETUP",
+                                          url="rtsp://{0:s}/wfd1.0/streamid=0".format(Settings.peeraddress),
+                                          seq=101,
+                                          others=[
+                                              ('Transport',
+                                               'RTP/AVP/UDP;unicast;client_port={0:d}'.format(Settings.rtp_port))
+                                          ])
         logger.debug("<-{}".format(m6req))
         sock.sendall(m6req.encode("UTF-8"))
         data = (sock.recv(1000))
@@ -396,9 +416,10 @@ class PiCast:
 
     def cast_seq_m7(self, sock, sessionid):
         logger = getLogger("PiCast.m7")
-        m7req = 'PLAY rtsp://{}/wfd1.0/streamid=0 RTSP/1.0\r\n'.format(Settings.peeraddress)
-        m7req += 'CSeq: 102\r\n' \
-                 + 'Session: {}\r\n\r\n'.format(str(sessionid))
+        m7req = self.rtsp_response_header(cmd='PLAY',
+                                          url='rtsp://{0:s}/wfd1.0/streamid=0 RTSP/1.0'.format(Settings.peeraddress),
+                                          seq=102,
+                                          others=[('Session', sessionid)])
         logger.debug("<-{}".format(m7req))
         sock.sendall(m7req.encode("UTF-8"))
         data = (sock.recv(1000))
@@ -423,11 +444,13 @@ class PiCast:
             else:
                 csnum = csnum + 1
                 msg = 'wfd-idr-request\r\n'
-                idrreq = 'SET_PARAMETER rtsp://localhost/wfd1.0 RTSP/1.0\r\n' \
-                         + 'Content-Length: ' + str(len(msg)) + '\r\n' \
-                         + 'Content-Type: text/parameters\r\n' \
-                         + 'CSeq: ' + str(csnum) + '\r\n\r\n' \
-                         + msg
+                idrreq = self.rtsp_response_header(seq=csnum,
+                                                   cmd="SET_PARAMETER", url="rtsp://localhost/wfd1.0",
+                                                   others=[
+                                                       ('Content-Length', len(msg)),
+                                                       ('Content-Type', 'text/parameters')
+                                                   ])
+                idrreq += msg
                 logger.debug("idreq: {}".format(idrreq))
                 sock.sendall(idrreq.encode("UTF-8"))
         else:
@@ -455,7 +478,7 @@ class PiCast:
             except socket.error as e:
                 watchdog, csnum = self.handle_recv_err(e, conn, idrsock, csnum)
             else:
-                logger.debug("data: {}".format(data))
+                logger.debug("->{}".format(data))
                 self.watchdog = 0
                 if len(data) == 0 or 'wfd_trigger_method: TEARDOWN' in data:
                     self.player.stop()
@@ -471,15 +494,15 @@ class PiCast:
                     entrylist = singlemessage.splitlines()
                     for entry in entrylist:
                         if re.match(r'CSeq:', entry):
-                            cseq = entry
-                            resp = 'RTSP/1.0 200 OK\r' + cseq + '\r\n\r\n'  # cseq contains \n
-                            logger.debug("Response: {}".format(resp))
+                            cseq = entry.rstrip()
+                            resp = self.rtsp_response_header(seq=cseq, res="200 OK")
+                            logger.debug("<-{}".format(resp))
                             conn.sendall(resp.encode("UTF-8"))
                             continue
 
     def run(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            server_address = (Settings.peeraddress, Settings.rtp_port)
+            server_address = (Settings.peeraddress, Settings.rtsp_port)
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(server_address)
@@ -536,13 +559,13 @@ class WifiP2PServer:
     def create_p2p_interface(self):
         wpacli = WpaCli()
         wpacli.start_p2p_find()
-        wpacli.set_device_name(Settings.device_name)
-        wpacli.set_device_type("7-0050F204-1")
+        wpacli.set_device_name(Settings.wp_device_name)
+        wpacli.set_device_type(Settings.wp_device_type)
         wpacli.set_p2p_go_ht40()
-        wpacli.wfd_subelem_set("0 {}".format(self.wfd_devinfo(port=Settings.control_port)))
+        wpacli.wfd_subelem_set("0 {}".format(self.wfd_devinfo(port=Settings.rtsp_port)))
         wpacli.wfd_subelem_set("1 {}".format(self.wfd_bssid(0)))
         wpacli.wfd_subelem_set("6 {}".format(self.wfd_sink_info(0, 0)))
-        wpacli.p2p_group_add(Settings.wifi_p2p_group_name)
+        wpacli.p2p_group_add(Settings.wp_group_name)
 
     def set_p2p_interface(self):
         logger = getLogger("PiCast")
@@ -562,17 +585,10 @@ class WifiP2PServer:
 
 
 class GstPlayer(Gtk.Window):
-    def __init__(self, port, scale=False):
+    def __init__(self):
         self.logger = getLogger("PiCast:GstPlayer")
-        width = 640
-        height = 400
-        gstcommand = "udpsrc port={0:d} caps=\"application/x-rtp, media=video\" ".format(port)
-        gstcommand += "! rtpjitterbuffer latency=100 ! rtpmp2tdepay ! tsdemux name=demuxer demuxer. " \
-                      "! queue max-size-buffers=0 max-size-time=0 ! h264parse ! omxh264dec ! videoconvert ! "
-        if scale:
-            gstcommand += "videoscale method=1 ! video/x-raw,width={0:d},height={1:d} ! ".format(width, height)
-        gstcommand += "autovideosink demuxer. ! queue max-size-buffers=0 max-size-time=0 " \
-                      "! aacparse ! avdec_aac ! audioconvert ! audioresample ! autoaudiosink "
+        gstcommand = "udpsrc port={0:d} caps=\"application/x-rtp, media=video\" ".format(Settings.rtp_port)
+        gstcommand += "! rtph264depay ! omxh264dec ! videoconvert ! autovideosink"
         self.pipeline = Gst.parse_launch(gstcommand)
         self.bus = self.pipeline.get_bus()
         self.bus.add_signal_watch()
